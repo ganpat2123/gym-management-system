@@ -116,7 +116,7 @@ module.exports.register = async (req, res) => {
   }
 };
 
- // LOGIN
+// LOGIN
 module.exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -182,10 +182,13 @@ module.exports.login = async (req, res) => {
           );
 
           // Step 4: Set secure authentication cookie
+          const isProduction = process.env.NODE_ENV === "production";
+
           res.cookie("token", token, {
             httpOnly: true,
-            secure: process.env.NODE_ENV === "production",
-            sameSite: "lax",
+            secure: isProduction,
+            sameSite: isProduction ? "none" : "lax",
+            path: "/",
             maxAge: 24 * 60 * 60 * 1000
           });
 
@@ -216,12 +219,16 @@ module.exports.login = async (req, res) => {
 };
 
 
-// LOGOUT
+
+ // LOGOUT
 module.exports.logout = (req, res) => {
+  const isProduction = process.env.NODE_ENV === "production";
+
   res.clearCookie("token", {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax"
+    secure: isProduction,
+    sameSite: isProduction ? "none" : "lax",
+    path: "/"
   });
 
   return res.status(200).json({
@@ -230,9 +237,10 @@ module.exports.logout = (req, res) => {
   });
 };
 
+
 // GET ALL USERS - ADMIN ONLY
 module.exports.AllUser = (req, res) => {
- const sql = `
+  const sql = `
   SELECT id, name, email, phone, role, is_active, created_at
   FROM users
   ORDER BY id DESC
