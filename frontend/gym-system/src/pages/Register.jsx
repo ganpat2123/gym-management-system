@@ -49,7 +49,7 @@ function Register() {
             setLoading(true);
 
             const response = await axios.post(
-                "http://localhost:8080/api/users/register",
+                "/api/users/register",
                 {
                     name: formData.name.trim(),
                     email: formData.email.trim(),
