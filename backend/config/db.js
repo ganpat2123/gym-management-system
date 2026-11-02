@@ -12,11 +12,18 @@ const config = {
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
-  connectTimeout: 20000
+
+  waitForConnections: true,
+  connectionLimit: 5,
+  queueLimit: 0,
+  connectTimeout: 20000,
+  enableKeepAlive: true,
+  keepAliveInitialDelay: 0
 };
 
 if (useSSL) {
   config.ssl = {
+    minVersion: "TLSv1.2",
     rejectUnauthorized: true,
     ...(process.env.DB_SSL_CA_PATH
       ? {
@@ -29,18 +36,18 @@ if (useSSL) {
   };
 }
 
-const db = mysql.createConnection(config);
+const db = mysql.createPool(config);
 
-db.connect((err) => {
+// Verify connection when the backend starts
+db.query("SELECT 1", (err) => {
   if (err) {
-    console.error(
-      "Database connection failed:",
-      err.code || err.message
-    );
-    return;
+    console.error("Database connection failed:", {
+      code: err.code,
+      message: err.message
+    });
+  } else {
+    console.log("Database connected successfully");
   }
-
-  console.log("Database connected successfully");
 });
 
 module.exports = db;
