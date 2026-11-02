@@ -3,247 +3,249 @@ const db = require("../config/db");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 
-
- // REGISTER
-module.exports.register = async (req, res) => {
-  try {
-    const { name, email, password, phone } = req.body;
-
-    if (!name || !email || !password || !phone) {
-      return res.status(400).json({
-        status: false,
-        message: "Name, email, password and phone are required"
-      });
-    }
-
-    const cleanEmail = String(email).trim().toLowerCase();
-    const cleanName = String(name).trim();
-    const cleanPhone = String(phone).trim();
-
-    // Validate email
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
-      return res.status(400).json({
-        status: false,
-        message: "Invalid email address"
-      });
-    }
-
-    // Validate phone
-    if (!/^\d{10}$/.test(cleanPhone)) {
-      return res.status(400).json({
-        status: false,
-        message: "Phone number must be 10 digits"
-      });
-    }
-
-    // Validate password
-    if (String(password).length < 8) {
-      return res.status(400).json({
-        status: false,
-        message: "Password must contain at least 8 characters"
-      });
-    }
-
-    // Check if email already exists
-    db.query(
-      "SELECT id FROM users WHERE email = ?",
-      [cleanEmail],
-      async (err, results) => {
-        if (err) {
-          console.error("Registration SELECT error:", {
-            code: err.code,
-            message: err.message
-          });
-
-          return res.status(500).json({
-            status: false,
-            message: "Server side error"
-          });
-        }
-
-        if (results.length > 0) {
-          return res.status(409).json({
-            status: false,
-            message: "Email already registered"
-          });
-        }
-
-        try {
-          const hashedPassword = await bcrypt.hash(password, 10);
-
-          const sql = `
-            INSERT INTO users
-            (name, email, password, phone, role)
-            VALUES (?, ?, ?, ?, ?)
-          `;
-
-          db.query(
-            sql,
-            [
-              cleanName,
-              cleanEmail,
-              hashedPassword,
-              cleanPhone,
-              "user"
-            ],
-            (insertError) => {
-              if (insertError) {
-                console.error("Registration INSERT error:", {
-                  code: insertError.code,
-                  message: insertError.message
-                });
-
-                return res.status(
-                  insertError.code === "ER_DUP_ENTRY" ? 409 : 500
-                ).json({
-                  status: false,
-                  message:
-                    insertError.code === "ER_DUP_ENTRY"
-                      ? "Email already registered"
-                      : "Unable to register user"
-                });
-              }
-
-              return res.status(201).json({
-                status: true,
-                message: "User registered successfully"
-              });
-            }
-          );
-        } catch (hashError) {
-          console.error("Registration hashing error:", {
-            code: hashError.code,
-            message: hashError.message
-          });
-
-          return res.status(500).json({
-            status: false,
-            message: "Unable to register user"
-          });
-        }
-      }
-    );
-  } catch (error) {
-    console.error("Registration unexpected error:", {
-      code: error.code,
-      message: error.message
-    });
-
-    return res.status(500).json({
-      status: false,
-      message: "Server side error"
-    });
-  }
+const logDbError = (operation, err) => {
+  console.error(operation, {
+    code: err.code,
+    message: err.message
+  });
 };
 
+// ==================== REGISTER ====================
 
-// LOGIN
-module.exports.login = async (req, res) => {
-  try {
-    const { email, password } = req.body;
+module.exports.register = (req, res) => {
+  const { name, email, password, phone } = req.body || {};
 
-    if (!email || !password) {
-      return res.status(400).json({
-        status: false,
-        message: "Email and password are required"
-      });
+  if (!name || !email || !password || !phone) {
+    return res.status(400).json({
+      status: false,
+      message: "Name, email, password and phone are required"
+    });
+  }
+
+  const cleanName = String(name).trim();
+  const cleanEmail = String(email).trim().toLowerCase();
+  const cleanPhone = String(phone).trim();
+
+  if (
+    !cleanName ||
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)
+  ) {
+    return res.status(400).json({
+      status: false,
+      message: "Invalid name or email address"
+    });
+  }
+
+  if (!/^\d{10}$/.test(cleanPhone)) {
+    return res.status(400).json({
+      status: false,
+      message: "Phone number must be 10 digits"
+    });
+  }
+
+  if (String(password).length < 8) {
+    return res.status(400).json({
+      status: false,
+      message: "Password must contain at least 8 characters"
+    });
+  }
+
+  db.query(
+    "SELECT id FROM users WHERE email = ?",
+    [cleanEmail],
+    async (err, results) => {
+      if (err) {
+        logDbError("Registration SELECT error:", err);
+
+        return res.status(500).json({
+          status: false,
+          message: "Server side error"
+        });
+      }
+
+      if (results.length > 0) {
+        return res.status(409).json({
+          status: false,
+          message: "Email already registered"
+        });
+      }
+
+      try {
+        const hashedPassword = await bcrypt.hash(
+          String(password),
+          10
+        );
+
+        const sql = `
+          INSERT INTO users
+          (name, email, password, phone, role)
+          VALUES (?, ?, ?, ?, ?)
+        `;
+
+        db.query(
+          sql,
+          [
+            cleanName,
+            cleanEmail,
+            hashedPassword,
+            cleanPhone,
+            "user"
+          ],
+          (insertError) => {
+            if (insertError) {
+              logDbError(
+                "Registration INSERT error:",
+                insertError
+              );
+
+              const duplicate =
+                insertError.code === "ER_DUP_ENTRY";
+
+              return res.status(
+                duplicate ? 409 : 500
+              ).json({
+                status: false,
+                message: duplicate
+                  ? "Email already registered"
+                  : "Unable to register user"
+              });
+            }
+
+            return res.status(201).json({
+              status: true,
+              message: "User registered successfully"
+            });
+          }
+        );
+      } catch (error) {
+        console.error(
+          "Registration hashing error:",
+          error.message
+        );
+
+        return res.status(500).json({
+          status: false,
+          message: "Unable to register user"
+        });
+      }
     }
+  );
+};
 
-    db.query(
-      "SELECT * FROM users WHERE email = ?",
-      [String(email).trim().toLowerCase()],
-      async (err, results) => {
-        if (err) {
-          return res.status(500).json({
-            status: false,
-            message: "Server side error"
-          });
-        }
+// ==================== LOGIN ====================
 
-        if (results.length === 0) {
+module.exports.login = (req, res) => {
+  const { email, password } = req.body || {};
+
+  if (!email || !password) {
+    return res.status(400).json({
+      status: false,
+      message: "Email and password are required"
+    });
+  }
+
+  const cleanEmail = String(email).trim().toLowerCase();
+
+  db.query(
+    "SELECT * FROM users WHERE email = ?",
+    [cleanEmail],
+    async (err, results) => {
+      if (err) {
+        logDbError("Login SELECT error:", err);
+
+        return res.status(500).json({
+          status: false,
+          message: "Server side error"
+        });
+      }
+
+      if (results.length === 0) {
+        return res.status(401).json({
+          status: false,
+          message: "Invalid email or password"
+        });
+      }
+
+      try {
+        const user = results[0];
+
+        const passwordMatches = await bcrypt.compare(
+          String(password),
+          user.password
+        );
+
+        if (!passwordMatches) {
           return res.status(401).json({
             status: false,
             message: "Invalid email or password"
           });
         }
 
-        try {
-          const user = results[0];
-
-          // Step 1: Verify password
-          const passwordMatches = await bcrypt.compare(
-            password,
-            user.password
-          );
-
-          if (!passwordMatches) {
-            return res.status(401).json({
-              status: false,
-              message: "Invalid email or password"
-            });
-          }
-
-          // Step 2: Check whether account is active
-          if (Number(user.is_active) !== 1) {
-            return res.status(403).json({
-              status: false,
-              message:
-                "Your account is deactivated. Please contact the gym administrator."
-            });
-          }
-
-          // Step 3: Generate JWT token
-          const token = jwt.sign(
-            {
-              id: user.id,
-              role: user.role
-            },
-            process.env.JWT_SECRET,
-            { expiresIn: "1d" }
-          );
-
-          // Step 4: Set secure authentication cookie
-          const isProduction = process.env.NODE_ENV === "production";
-
-          res.cookie("token", token, {
-            httpOnly: true,
-            secure: isProduction,
-            sameSite: isProduction ? "none" : "lax",
-            path: "/",
-            maxAge: 24 * 60 * 60 * 1000
+        if (Number(user.is_active) !== 1) {
+          return res.status(403).json({
+            status: false,
+            message:
+              "Your account is deactivated. Please contact the gym administrator."
           });
+        }
 
-          return res.status(200).json({
-            status: true,
-            message: "Login successfully"
-          });
-
-        } catch (loginError) {
-          console.error("Login error:", loginError);
+        if (!process.env.JWT_SECRET) {
+          console.error(
+            "Login configuration error: JWT_SECRET is missing"
+          );
 
           return res.status(500).json({
             status: false,
-            message: "Unable to login"
+            message: "Login service is not configured"
           });
         }
+
+        const token = jwt.sign(
+          {
+            id: user.id,
+            role: user.role
+          },
+          process.env.JWT_SECRET,
+          {
+            expiresIn: "1d"
+          }
+        );
+
+        const isProduction =
+          process.env.NODE_ENV === "production";
+
+        res.cookie("token", token, {
+          httpOnly: true,
+          secure: isProduction,
+          sameSite: isProduction ? "none" : "lax",
+          path: "/",
+          maxAge: 24 * 60 * 60 * 1000
+        });
+
+        return res.status(200).json({
+          status: true,
+          message: "Login successfully"
+        });
+      } catch (error) {
+        console.error("Login processing error:", {
+          code: error.code,
+          message: error.message
+        });
+
+        return res.status(500).json({
+          status: false,
+          message: "Unable to login"
+        });
       }
-    );
-
-  } catch (error) {
-    console.error("Login error:", error);
-
-    return res.status(500).json({
-      status: false,
-      message: "Server side error"
-    });
-  }
+    }
+  );
 };
 
+// ==================== LOGOUT ====================
 
-
- // LOGOUT
 module.exports.logout = (req, res) => {
-  const isProduction = process.env.NODE_ENV === "production";
+  const isProduction =
+    process.env.NODE_ENV === "production";
 
   res.clearCookie("token", {
     httpOnly: true,
@@ -258,17 +260,20 @@ module.exports.logout = (req, res) => {
   });
 };
 
+// ==================== GET ALL USERS ====================
+// Admin authorization must be enforced by route middleware.
 
-// GET ALL USERS - ADMIN ONLY
 module.exports.AllUser = (req, res) => {
   const sql = `
-  SELECT id, name, email, phone, role, is_active, created_at
-  FROM users
-  ORDER BY id DESC
-`;
+    SELECT id, name, email, phone, role, is_active, created_at
+    FROM users
+    ORDER BY id DESC
+  `;
 
   db.query(sql, (err, results) => {
     if (err) {
+      logDbError("Get users error:", err);
+
       return res.status(500).json({
         status: false,
         message: "Unable to fetch users"
@@ -283,9 +288,17 @@ module.exports.AllUser = (req, res) => {
   });
 };
 
-// GET ONE USER
+// ==================== GET ONE USER ====================
+
 module.exports.one = (req, res) => {
   const { id } = req.params;
+
+  if (!req.user) {
+    return res.status(401).json({
+      status: false,
+      message: "Unauthorized"
+    });
+  }
 
   if (
     req.user.role !== "admin" &&
@@ -305,6 +318,8 @@ module.exports.one = (req, res) => {
 
   db.query(sql, [id], (err, results) => {
     if (err) {
+      logDbError("Get one user error:", err);
+
       return res.status(500).json({
         status: false,
         message: "Unable to fetch user"
@@ -326,11 +341,13 @@ module.exports.one = (req, res) => {
   });
 };
 
-// UPDATE USER - ADMIN ONLY
+// ==================== UPDATE USER ====================
+// Admin authorization must be enforced by route middleware.
+
 module.exports.update = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, email, password, phone } = req.body;
+    const { name, email, password, phone } = req.body || {};
 
     if (!name || !email || !password || !phone) {
       return res.status(400).json({
@@ -344,6 +361,7 @@ module.exports.update = async (req, res) => {
     const cleanPhone = String(phone).trim();
 
     if (
+      !cleanName ||
       !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail) ||
       !/^\d{10}$/.test(cleanPhone) ||
       String(password).length < 8
@@ -354,7 +372,10 @@ module.exports.update = async (req, res) => {
       });
     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword = await bcrypt.hash(
+      String(password),
+      10
+    );
 
     const sql = `
       UPDATE users
@@ -373,14 +394,18 @@ module.exports.update = async (req, res) => {
       ],
       (err, result) => {
         if (err) {
+          logDbError("Update user error:", err);
+
+          const duplicate =
+            err.code === "ER_DUP_ENTRY";
+
           return res.status(
-            err.code === "ER_DUP_ENTRY" ? 409 : 500
+            duplicate ? 409 : 500
           ).json({
             status: false,
-            message:
-              err.code === "ER_DUP_ENTRY"
-                ? "Email already registered"
-                : "Unable to update user"
+            message: duplicate
+              ? "Email already registered"
+              : "Unable to update user"
           });
         }
 
@@ -398,6 +423,11 @@ module.exports.update = async (req, res) => {
       }
     );
   } catch (error) {
+    console.error(
+      "Update user error:",
+      error.message
+    );
+
     return res.status(500).json({
       status: false,
       message: "Unable to update user"
@@ -405,9 +435,18 @@ module.exports.update = async (req, res) => {
   }
 };
 
-// DELETE USER - ADMIN ONLY
+// ==================== DELETE USER ====================
+// Admin authorization must be enforced by route middleware.
+
 module.exports.delete = (req, res) => {
   const { id } = req.params;
+
+  if (!req.user) {
+    return res.status(401).json({
+      status: false,
+      message: "Unauthorized"
+    });
+  }
 
   if (String(req.user.id) === String(id)) {
     return res.status(400).json({
@@ -421,6 +460,8 @@ module.exports.delete = (req, res) => {
     [id],
     (err, result) => {
       if (err) {
+        logDbError("Delete user error:", err);
+
         return res.status(500).json({
           status: false,
           message:
