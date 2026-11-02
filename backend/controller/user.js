@@ -3,7 +3,8 @@ const db = require("../config/db");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 
-// REGISTER
+
+ // REGISTER
 module.exports.register = async (req, res) => {
   try {
     const { name, email, password, phone } = req.body;
@@ -19,6 +20,7 @@ module.exports.register = async (req, res) => {
     const cleanName = String(name).trim();
     const cleanPhone = String(phone).trim();
 
+    // Validate email
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
       return res.status(400).json({
         status: false,
@@ -26,6 +28,7 @@ module.exports.register = async (req, res) => {
       });
     }
 
+    // Validate phone
     if (!/^\d{10}$/.test(cleanPhone)) {
       return res.status(400).json({
         status: false,
@@ -33,6 +36,7 @@ module.exports.register = async (req, res) => {
       });
     }
 
+    // Validate password
     if (String(password).length < 8) {
       return res.status(400).json({
         status: false,
@@ -40,11 +44,17 @@ module.exports.register = async (req, res) => {
       });
     }
 
+    // Check if email already exists
     db.query(
       "SELECT id FROM users WHERE email = ?",
       [cleanEmail],
       async (err, results) => {
         if (err) {
+          console.error("Registration SELECT error:", {
+            code: err.code,
+            message: err.message
+          });
+
           return res.status(500).json({
             status: false,
             message: "Server side error"
@@ -59,10 +69,7 @@ module.exports.register = async (req, res) => {
         }
 
         try {
-          const hashedPassword = await bcrypt.hash(
-            password,
-            10
-          );
+          const hashedPassword = await bcrypt.hash(password, 10);
 
           const sql = `
             INSERT INTO users
@@ -81,10 +88,13 @@ module.exports.register = async (req, res) => {
             ],
             (insertError) => {
               if (insertError) {
+                console.error("Registration INSERT error:", {
+                  code: insertError.code,
+                  message: insertError.message
+                });
+
                 return res.status(
-                  insertError.code === "ER_DUP_ENTRY"
-                    ? 409
-                    : 500
+                  insertError.code === "ER_DUP_ENTRY" ? 409 : 500
                 ).json({
                   status: false,
                   message:
@@ -101,6 +111,11 @@ module.exports.register = async (req, res) => {
             }
           );
         } catch (hashError) {
+          console.error("Registration hashing error:", {
+            code: hashError.code,
+            message: hashError.message
+          });
+
           return res.status(500).json({
             status: false,
             message: "Unable to register user"
@@ -109,12 +124,18 @@ module.exports.register = async (req, res) => {
       }
     );
   } catch (error) {
+    console.error("Registration unexpected error:", {
+      code: error.code,
+      message: error.message
+    });
+
     return res.status(500).json({
       status: false,
       message: "Server side error"
     });
   }
 };
+
 
 // LOGIN
 module.exports.login = async (req, res) => {
